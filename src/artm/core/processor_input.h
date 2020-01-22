@@ -24,7 +24,8 @@ class ProcessorInput {
                      batch_filename_(), batch_weight_(1.0f), task_id_(), batch_manager_(nullptr),
                      score_manager_(nullptr), cache_manager_(nullptr),
                      ptdw_cache_manager_(nullptr),
-                     reuse_theta_cache_manager_(nullptr) { }
+                     reuse_theta_cache_manager_(nullptr),
+                     use_e_step_normalization_(true) { }
 
   Batch* mutable_batch() { return &batch_; }
   const Batch& batch() const { return batch_; }
@@ -67,6 +68,11 @@ class ProcessorInput {
   const boost::uuids::uuid& task_id() const { return task_id_; }
   void set_task_id(const boost::uuids::uuid& task_id) { task_id_ = task_id; }
 
+  bool use_e_step_normalization() const { return use_e_step_normalization_; }
+  void set_use_e_step_normalization(bool use_e_step_normalization) {
+    use_e_step_normalization_ = use_e_step_normalization;
+  }
+
  private:
   Batch batch_;
   ProcessBatchesArgs args_;
@@ -80,6 +86,7 @@ class ProcessorInput {
   CacheManager* cache_manager_;
   CacheManager* ptdw_cache_manager_;
   CacheManager* reuse_theta_cache_manager_;
+  bool use_e_step_normalization_;
 };
 
 }  // namespace core

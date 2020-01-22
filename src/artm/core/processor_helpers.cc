@@ -391,6 +391,7 @@ void ProcessorHelpers::InferThetaAndUpdateNwtSparse(const ProcessBatchesArgs& ar
                                                     NwtWriteAdapter* nwt_writer,
                                                     util::Blas* blas,
                                                     bool use_sparse_computation,
+                                                    bool use_e_step_normalization,
                                                     ThetaMatrix* new_cache_entry_ptr) {
   LocalThetaMatrix<float> n_td(theta_matrix->num_topics(), theta_matrix->num_items());
   const int num_topics = p_wt.topic_size();
@@ -421,7 +422,7 @@ void ProcessorHelpers::InferThetaAndUpdateNwtSparse(const ProcessBatchesArgs& ar
 
     std::vector<int> num_non_zero_topics_for_token(max_local_token_size, num_topics);
 
-    LocalThetaMatrix<float> r_td(num_topics, 1.0f);
+    LocalThetaMatrix<float> r_td(num_topics, 1);
     std::vector<float> helper_vector_values(num_topics, 0.0f);
     std::vector<int> helper_vector_ptrs(num_topics, 0);
 
@@ -433,11 +434,13 @@ void ProcessorHelpers::InferThetaAndUpdateNwtSparse(const ProcessBatchesArgs& ar
       const int end_index = sparse_ndw.row_ptr()[d + 1];
       local_phi_values.InitializeZeros();
       bool item_has_tokens = false;
+
       for (int i = begin_index; i < end_index; ++i) {
         int w = sparse_ndw.col_ind()[i];
         if (token_id[w] == ::artm::core::PhiMatrix::kUndefIndex) {
           continue;
         }
+
         item_has_tokens = true;
         float* local_phi_values_ptr = &local_phi_values(i - begin_index, 0);
         int* local_phi_ptrs_ptr = &local_phi_ptrs(i - begin_index, 0);
@@ -478,21 +481,23 @@ void ProcessorHelpers::InferThetaAndUpdateNwtSparse(const ProcessBatchesArgs& ar
 
           int num_non_zero_topics = num_non_zero_topics_for_token[i - begin_index];
 
-          if (num_non_zero_topics < num_topics) {
-            for (int k = 0; k < num_non_zero_topics; ++k) {
-              p_dw_val += phi_values_ptr[k] * theta_ptr[phi_ptrs_ptr[k]];
+          if (use_e_step_normalization) {
+            if (num_non_zero_topics < num_topics) {
+              for (int k = 0; k < num_non_zero_topics; ++k) {
+                p_dw_val += phi_values_ptr[k] * theta_ptr[phi_ptrs_ptr[k]];
+              }
+            } else {
+              for (int k = 0; k < num_topics; ++k) {
+                p_dw_val += phi_values_ptr[k] * theta_ptr[k];
+              }
             }
-          } else {
-            for (int k = 0; k < num_topics; ++k) {
-              p_dw_val += phi_values_ptr[k] * theta_ptr[k];
+
+            if (isZero(p_dw_val)) {
+              continue;
             }
           }
 
-          if (isZero(p_dw_val)) {
-            continue;
-          }
-
-          const float alpha = sparse_ndw.val()[i] / p_dw_val;
+          const float alpha = use_e_step_normalization ? (sparse_ndw.val()[i] / p_dw_val) : sparse_ndw.val()[i];
           if (num_non_zero_topics < num_topics) {
             for (int k = 0; k < num_non_zero_topics; ++k) {
               ntd_ptr[phi_ptrs_ptr[k]] += alpha * phi_values_ptr[k];
@@ -526,11 +531,15 @@ void ProcessorHelpers::InferThetaAndUpdateNwtSparse(const ProcessBatchesArgs& ar
       for (int d = 0; d < docs_count; ++d) {
         for (int i = sparse_ndw.row_ptr()[d]; i < sparse_ndw.row_ptr()[d + 1]; ++i) {
           int w = sparse_ndw.col_ind()[i];
-          float p_dw_val = blas->sdot(num_topics, &phi_matrix(w, 0), 1, &(*theta_matrix)(0, d), 1);  // NOLINT
-          if (isZero(p_dw_val)) {
-            continue;
+          if (use_e_step_normalization) {
+            float p_dw_val = blas->sdot(num_topics, &phi_matrix(w, 0), 1, &(*theta_matrix)(0, d), 1);  // NOLINT
+            if (isZero(p_dw_val)) {
+              continue;
+            }
+            blas->saxpy(num_topics, sparse_ndw.val()[i] / p_dw_val, &phi_matrix(w, 0), 1, &helper_td(0, d), 1);
+          } else {
+            blas->saxpy(num_topics, sparse_ndw.val()[i], &phi_matrix(w, 0), 1, &helper_td(0, d), 1);
           }
-          blas->saxpy(num_topics, sparse_ndw.val()[i] / p_dw_val, &phi_matrix(w, 0), 1, &helper_td(0, d), 1);
         }
       }
 

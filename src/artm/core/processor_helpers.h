@@ -180,6 +180,7 @@ class ProcessorHelpers {
                                            NwtWriteAdapter* nwt_writer,
                                            util::Blas* blas,
                                            bool use_sparse_computation,
+                                           bool use_e_step_normalization,
                                            ThetaMatrix* new_cache_entry_ptr = nullptr);
 
   ProcessorHelpers() = delete;

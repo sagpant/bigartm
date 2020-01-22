@@ -763,7 +763,9 @@ void MasterComponent::Request(const GetMasterComponentInfoArgs& /*args*/, Master
 
 void MasterComponent::Request(const ProcessBatchesArgs& args, ProcessBatchesResult* result) {
   BatchManager batch_manager;
-  RequestProcessBatchesImpl(args, &batch_manager, /* asynchronous =*/ false, nullptr, result->mutable_theta_matrix());
+  RequestProcessBatchesImpl(args, &batch_manager, /* asynchronous =*/ false,
+                            /* use_e_step_normalization =*/ true,
+                            nullptr, result->mutable_theta_matrix());
   instance_->score_manager()->RequestAllScores(result->mutable_score_data());
 }
 
@@ -787,11 +789,13 @@ void MasterComponent::Request(const ProcessBatchesArgs& args, ProcessBatchesResu
 void MasterComponent::AsyncRequestProcessBatches(const ProcessBatchesArgs& process_batches_args,
                                                  BatchManager *batch_manager) {
   RequestProcessBatchesImpl(process_batches_args, batch_manager, /* asynchronous =*/ true,
+                            /* use_e_step_normalization =*/ true,
                             /*score_manager=*/ nullptr, /* theta_matrix=*/ nullptr);
 }
 
 void MasterComponent::RequestProcessBatchesImpl(const ProcessBatchesArgs& process_batches_args,
                                                 BatchManager* batch_manager, bool asynchronous,
+                                                bool use_e_step_normalization,
                                                 ScoreManager* score_manager,
                                                 ::artm::ThetaMatrix* theta_matrix) {
   const ProcessBatchesArgs& args = process_batches_args;  // short notation
@@ -871,6 +875,7 @@ void MasterComponent::RequestProcessBatchesImpl(const ProcessBatchesArgs& proces
     batch_manager->Add(task_id);
 
     auto pi = std::make_shared<ProcessorInput>();
+    pi->set_use_e_step_normalization(use_e_step_normalization);
     pi->set_batch_manager(batch_manager);
     pi->set_score_manager(score_manager);
     pi->set_cache_manager(theta_cache_manager_ptr);
@@ -1184,8 +1189,8 @@ void MasterComponent::Request(const TransformMasterModelArgs& args, ::artm::Thet
   FixMessage(&process_batches_args);
 
   BatchManager batch_manager;
-  RequestProcessBatchesImpl(process_batches_args, &batch_manager,
-                            /* asynchronous =*/ false, /*score_manager =*/ nullptr, result);
+  RequestProcessBatchesImpl(process_batches_args, &batch_manager, /* asynchronous =*/ false,
+                            /* use_e_step_normalization =*/ true, /*score_manager =*/ nullptr, result);
   ValidateProcessedItems("Transform", this);
 }
 
@@ -1349,7 +1354,7 @@ class ArtmExecutor {
     master_component_->ClearScoreCache(ClearScoreCacheArgs());
     for (int pass = 0; pass < num_collection_passes; ++pass) {
       ::artm::core::ScoreManager score_manager(master_component_->instance_.get());
-      ProcessBatches(pwt_name_, nwt_name_, iter, &score_manager);
+      ProcessBatches(pwt_name_, nwt_name_, iter, &score_manager, true);
       Regularize(pwt_name_, nwt_name_, rwt_name);
       Normalize(pwt_name_, nwt_name_, rwt_name);
       StoreScores(&score_manager);
@@ -1368,7 +1373,7 @@ class ArtmExecutor {
       float decay_weight = iter->decay_weight();
 
       ::artm::core::ScoreManager score_manager(master_component_->instance_.get());
-      ProcessBatches(pwt_name_, nwt_hat_index, iter, &score_manager);
+      ProcessBatches(pwt_name_, nwt_hat_index, iter, &score_manager, true);
       Merge(nwt_name_, decay_weight, nwt_hat_index, apply_weight);
       Dispose(nwt_hat_index);
       Regularize(pwt_name_, nwt_name_, rwt_name);
@@ -1449,7 +1454,8 @@ class ArtmExecutor {
   RegularizeModelArgs regularize_model_args_;
   std::vector<std::shared_ptr<BatchManager>> asynchronous_;
 
-  void ProcessBatches(std::string pwt, std::string nwt, BatchesIterator* iter, ScoreManager* score_manager) {
+  void ProcessBatches(std::string pwt, std::string nwt, BatchesIterator* iter,
+                      ScoreManager* score_manager, bool use_e_step_normalization) {
     process_batches_args_.set_pwt_source_name(pwt);
     process_batches_args_.set_nwt_target_name(nwt);
     iter->move(&process_batches_args_);
@@ -1459,6 +1465,7 @@ class ArtmExecutor {
     master_component_->RequestProcessBatchesImpl(process_batches_args_,
                                                  &batch_manager,
                                                  /* asynchronous =*/ false,
+                                                 /* use_e_step_normalization =*/ use_e_step_normalization,
                                                  /* score_manager =*/ score_manager,
                                                  /* theta_matrix*/ nullptr);
     process_batches_args_.clear_batch_filename();
@@ -1476,8 +1483,9 @@ class ArtmExecutor {
     master_component_->RequestProcessBatchesImpl(process_batches_args_,
                                                  asynchronous_.back().get(),
                                                  /* asynchronous =*/ true,
+                                                 /* use_e_step_normalization =*/ true,
                                                  /* score_manager =*/ nullptr,
-                                                 /* theta_matrix*/ nullptr);
+                                                 /* theta_matrix =*/ nullptr);
     process_batches_args_.clear_batch_filename();
     return operation_id;
   }
