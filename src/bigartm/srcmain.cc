@@ -1636,6 +1636,7 @@ int execute(const artm_options& options, int argc, char* argv[]) {
         fit_offline_args.add_batch_filename(batch_file_name.string());
       }
 
+      fit_offline_args.set_use_e_step_normalization(true);
       std::future<void> future = std::async(std::launch::async, [master_component, fit_offline_args]() {
         master_component->FitOfflineModel(fit_offline_args);
       });

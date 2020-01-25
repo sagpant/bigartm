@@ -1349,12 +1349,14 @@ class ArtmExecutor {
     }
   }
 
-  void ExecuteOfflineAlgorithm(int num_collection_passes, OfflineBatchesIterator* iter) {
+  void ExecuteOfflineAlgorithm(int num_collection_passes,
+                               OfflineBatchesIterator* iter,
+                               bool use_e_step_normalization) {
     const std::string rwt_name = "rwt";
     master_component_->ClearScoreCache(ClearScoreCacheArgs());
     for (int pass = 0; pass < num_collection_passes; ++pass) {
       ::artm::core::ScoreManager score_manager(master_component_->instance_.get());
-      ProcessBatches(pwt_name_, nwt_name_, iter, &score_manager, true);
+      ProcessBatches(pwt_name_, nwt_name_, iter, &score_manager, use_e_step_normalization);
       Regularize(pwt_name_, nwt_name_, rwt_name);
       Normalize(pwt_name_, nwt_name_, rwt_name);
       StoreScores(&score_manager);
@@ -1641,7 +1643,7 @@ void MasterComponent::FitOffline(const FitOfflineMasterModelArgs& args) {
   ArtmExecutor artm_executor(*config, this);
   OfflineBatchesIterator iter(args.batch_filename(), args.batch_weight());
   artm_executor.mutable_process_batches_args()->set_reset_nwt(args.reset_nwt());
-  artm_executor.ExecuteOfflineAlgorithm(args.num_collection_passes(), &iter);
+  artm_executor.ExecuteOfflineAlgorithm(args.num_collection_passes(), &iter, args.use_e_step_normalization());
 
   ValidateProcessedItems("FitOffline", this);
 }

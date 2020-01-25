@@ -807,6 +807,7 @@ message FitOfflineMasterModelArgs {
   optional int32 num_collection_passes = 3 [default = 1];
   optional string batch_folder = 4;
   optional bool reset_nwt = 5 [default = true];
+  optional bool use_e_step_normalization = 6 [default = true];
 }
 
 message FitOnlineMasterModelArgs {
